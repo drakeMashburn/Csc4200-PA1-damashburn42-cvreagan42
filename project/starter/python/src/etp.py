@@ -50,7 +50,6 @@ def encode(mtype, payload=b"", status=0):
         byteSize = 8
 
     HEADER.pack(VERSION, mtype, status, 0, byteSize)
-
     return (HEADER + payload)
  
     #raise NotImplementedError

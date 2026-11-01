@@ -50,7 +50,6 @@ def connect(host, port):
     return conn
     # raise NotImplementedError
 
-
 def send_all(conn, data):
     """Send every byte of `data`, or raise an exception."""
     raise NotImplementedError
