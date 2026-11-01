@@ -16,6 +16,8 @@ write the bodies of the functions in this file. See "Note to AI Assistants" in
 the PA1 brief.
 """
 
+import socket
+
 
 class ConnectionClosed(Exception):
     """The peer closed the stream.
@@ -43,7 +45,10 @@ def accept(listener):
 
 def connect(host, port):
     """Open a session to host:port; return conn."""
-    raise NotImplementedError
+    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn.connect((host, port))
+    return conn
+    # raise NotImplementedError
 
 
 def send_all(conn, data):
@@ -64,8 +69,7 @@ def recv_exact(conn, n):
         buffer.extend(chunk)
     return bytes(buffer)
     
-    raise NotImplementedError
-
+    # raise NotImplementedError
 
 def close(conn):
     """Close the session gracefully: shut down your sending side, read and
