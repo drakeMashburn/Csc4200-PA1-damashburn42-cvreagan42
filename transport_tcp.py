@@ -75,7 +75,16 @@ def connect(host, port):
 
 def send_all(conn, data):
     """Send every byte of `data`, or raise an exception."""
-    raise NotImplementedError
+    total_sent = 0
+
+    while total_sent < len(data):
+        sent = conn.send(data[total_sent:])
+
+        if sent == 0:
+            raise ConnectionClosed("Socket closed")
+        
+        total += total_sent
+    # raise NotImplementedError
 
 
 def recv_exact(conn, n):
@@ -97,4 +106,19 @@ def close(conn):
     """Close the session gracefully: shut down your sending side, read and
     discard whatever is still arriving until end-of-stream (or about a second
     passes), then close. Specification, Section 8.2 explains why."""
+
+    conn.shutdown(socket.SHUT_WR)
+    conn.settimeout(1.0)
+
+    try:
+        while True:
+            data = conn.recv(4096)
+
+            if data == b"":
+                break:
+    except socket.timeout as error:
+        print(f"Problem with closing session: {error}")
+    
+    conn.close()
+
     raise NotImplementedError
