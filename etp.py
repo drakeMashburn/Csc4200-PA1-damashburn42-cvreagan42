@@ -33,23 +33,10 @@ NAME_RE = re.compile(rb"^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}\Z")
 def encode(mtype, payload=b"", status=0):
     """Return the bytes of one complete ETP message: header + payload."""
     # TODO: pack the header with HEADER.pack(...) and append the payload.
-    byteSize:int = 0
+    byteSize:int = len(payload)
 
-    if(mtype == HELLO):
-        byteSize = 15
-    elif(mtype == HELLO_OK):
-        byteSize = 32
-    elif(mtype == LIST):
-        byteSize = 8
-    elif(mtype == LIST_OK):
-        byteSize = 32
-    elif(mtype == BYE):
-        byteSize = 8
-    elif(mtype == BYE_OK):
-        byteSize = 8
-
-    HEADER.pack(VERSION, mtype, status, 0, byteSize)
-    return (HEADER + payload)
+    headerBytes:bytes = HEADER.pack(VERSION, mtype, status, 0, byteSize)
+    return (headerBytes + payload)
     # raise NotImplementedError
 
 
