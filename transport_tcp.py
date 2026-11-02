@@ -35,7 +35,21 @@ class ConnectionClosed(Exception):
 def listen(bind_addr, port):
     """Start accepting sessions on bind_addr:port; return a listener.
     Remember SO_REUSEADDR (Specification, Section 9)."""
-    raise NotImplementedError
+    #accept the connection
+    #the listener is a socket.
+    #essentally, create the listen with our args
+    ##set the SO_REUSEADDR then binf the listener, then return it.
+
+    #creates the listener socket
+    listener:socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #sets the SO_REUSEADDR flag
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #binds the socket based off address and port
+    listener.bind((bind_addr,port))
+
+    #returns the socket
+    return listener
+    #raise NotImplementedError
 
 
 def accept(listener):
