@@ -47,6 +47,8 @@ def listen(bind_addr, port):
     #binds the socket based off address and port
     listener.bind((bind_addr,port))
 
+    listener.listen()
+    
     #returns the socket
     return listener
     #raise NotImplementedError
