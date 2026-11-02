@@ -48,15 +48,22 @@ def listen(bind_addr, port):
     listener.bind((bind_addr,port))
 
     listener.listen()
-    
+
     #returns the socket
     return listener
     #raise NotImplementedError
 
 
-def accept(listener):
+def accept(listener:socket):
     """Wait for the next session; return (conn, peer_address)."""
-    raise NotImplementedError
+    #func will recive the listenr socket, and we need to get the conn, and peer address out of it
+    #so the accept func itself will return those values, and we can take it from that.
+
+    #listener returns the conn and addr as a touple
+    acceptTuple = listener.accept()
+    #returns each individual element of the tuple
+    return acceptTuple[0], acceptTuple[1]
+    #raise NotImplementedError
 
 
 def connect(host, port):
