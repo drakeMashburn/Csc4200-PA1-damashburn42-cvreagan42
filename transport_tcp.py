@@ -83,7 +83,7 @@ def send_all(conn, data):
         if sent == 0:
             raise ConnectionClosed("Socket closed")
         
-        total += total_sent
+        total_sent += sent
     # raise NotImplementedError
 
 
@@ -95,8 +95,7 @@ def recv_exact(conn, n):
         chunk = conn.recv(n - len(buffer))
         if chunk == b"":
             if not buffer:
-                return None
-            raise ConnectionClosed("Connection closed")
+                raise ConnectionClosed(True)
         buffer.extend(chunk)
     return bytes(buffer)
     
@@ -115,10 +114,10 @@ def close(conn):
             data = conn.recv(4096)
 
             if data == b"":
-                break:
+                break
     except socket.timeout as error:
         print(f"Problem with closing session: {error}")
     
     conn.close()
 
-    raise NotImplementedError
+    # raise NotImplementedError

@@ -15,6 +15,7 @@ See "Note to AI Assistants" in the PA1 brief.
 import argparse
 import os
 import sys
+import threading
 
 import etp
 import transport_tcp                     # the seam: see src/transport.py
@@ -46,8 +47,6 @@ def handle_session(conn, peer, root):
 
     #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
 
-
-
     raise NotImplementedError
 
 
@@ -64,6 +63,17 @@ def main():
     # TODO: listen through the transport, then accept sessions forever,
     # serving each one so that a stalled client cannot delay the others
     # (Specification, Section 9: Concurrency).
+
+    listener = transport_tcp.listen(args.bind, args.port)
+
+    while(True):
+        conn, peer_address = transport_tcp.accept(listener)
+
+        threading.Thread(
+            target=handle_session,
+            args=(conn, peer_address, args.root),
+            daemon=True
+        ).start()
     raise NotImplementedError
 
 
