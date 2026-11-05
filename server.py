@@ -29,22 +29,44 @@ def handle_session(conn, peer, root):
     per response (Section 9), and close when the session ends -- for any reason.
     A failure here must end THIS session only, never the server.
     """
-    message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
-    #raise not r
-    if(message_tuple[1] != etp.HELLO):
-        transport_tcp.close(conn)
-        raise etp.NOT_READY
-        
-    try:
-        if(message_tuple[1] != 0x1,0x2,0x3,0x4,0x5):
-            raise etp.BAD_NAME
-    except etp.BAD_NAME:
-        #upon getting that error, we need to turn the session back to AWAIT_HELLO
-        pass
-        
-        
-    message = etp.encode(message_tuple[1], message_tuple[4], message_tuple[2])
 
+    #sets the current state to AWAIT_HELLO to check things, (like if first message is hello.)
+    state = AWAIT_HELLO
+    #while the state is in await hello, it will check if the recived message is hello, if not crash, otherwise, check if it is a valid hello, if it is not a valid hello, set state back to await hello, otherwise, make state HELLO_OK and send it, braking the loop
+   
+    while(state == AWAIT_HELLO)
+        #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
+        message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
+        #raise not ready fatal
+        state = message_tuple[1]
+        if(state != etp.HELLO):
+            transport_tcp.close(conn)
+            raise etp.NOT_READY
+            
+        #if the Name is bad, it will raise a non fatal bad name error, set the state back to AWAIT_HELLO, and start back at the begining of the loop.) Else, send back HELLO_OK
+        try:
+            if(state != 0x1,0x2,0x3,0x4,0x5) #or if length is less then 1 byte or more then 32) :
+                raise etp.BAD_NAME
+            else:
+                state = HELLO_OK
+                sendPayload:bytes = b"theEtpServer"
+                message = etp.encode(etp.HELLO_OK, sendPayload, 0)
+                transport_tcp.send_all(conn, message)
+        except etp.BAD_NAME:
+            state = AWAIT_HELLO
+            continue 
+
+    while(state != BYE)
+        message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
+        state = message_tuple[1]
+        if(state = list)
+
+
+    
+    
+    
+        
+        
     #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
 
     raise NotImplementedError
