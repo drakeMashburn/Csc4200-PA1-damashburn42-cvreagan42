@@ -61,15 +61,9 @@ def handle_session(conn, peer, root):
         state = message_tuple[1]
         if(state = list)
 
-
-    
-    
-    
-        
-        
     #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
 
-    raise NotImplementedError
+    # raise NotImplementedError
 
 
 def main():
@@ -96,7 +90,7 @@ def main():
             args=(conn, peer_address, args.root),
             daemon=True
         ).start()
-    raise NotImplementedError
+    # raise NotImplementedError
 
 
 if __name__ == "__main__":
