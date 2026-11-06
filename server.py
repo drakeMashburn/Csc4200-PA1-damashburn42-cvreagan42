@@ -92,7 +92,7 @@ def handle_session(conn, peer, root):
             sentFile = None
             messageLen = message_tuple[3]
             realFile:bool = False
-            try
+            try:
                 #checks if name is valid
                 if(etp.valid_name(checkedFile) == False):
                     raise etp.BAD_NAME
@@ -129,15 +129,26 @@ def handle_session(conn, peer, root):
             except etp.SERVER_ERROR:
                 message = etp.encode(etp.SERVER_ERROR, '', 1)
                 transport_tcp.send_all(conn, message)
-                    
+
 
             #perform get logic
         elif(state == PUT):
             #perform put logic'
             pass
         elif(state == BYE):
-            #perfomr bye logic
-            pass
+           byteSize = len(message_tuple[4])
+            #if bad request, raise bad request and send the error back
+            try:
+                if(byteSize != 0):
+                    raise etp.BAD_REQUEST
+                message = etp.encode(etp.BYE_OK, '', 0)
+                transport_tcp.send_all(conn, message)
+                transport_tcp.close(conn)
+            except etp.BAD_REQUEST:
+                message = etp.encode(etp.BAD_REQUEST, '', 1)
+                transport_tcp.send_all(conn, message)
+
+
         else:
             #must either be another hello message or a bad message, raise an error
 
