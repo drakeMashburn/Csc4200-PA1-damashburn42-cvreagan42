@@ -59,8 +59,43 @@ def handle_session(conn, peer, root):
     while(state != BYE)
         message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
         state = message_tuple[1]
-        if(state = list)
+        if(state == LIST)
+            byteSize:int = len(message_tuple[4])
+            #if bad request, raise bad request and send the error back
+            try:
+                if(byteSize != 0):
+                    raise etp.BAD_REQUEST
+            except etp.BAD_REQUEST:
+                message = etp.encode(etp.BAD_REQUEST, '', 1)
+                transport_tcp.send_all(conn, message)
+                continue
+            #gets all files in root and sorts them in reverse order (z files should come up first)
+            dirIterator = os.scandir(root)
+            sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
+            sendPayload = b""
+            for entry in sortedIterator:
+                fileName = entry.name
+                fileSize = entry.stat.st_size
+                #the .encode is a built in python func, not the etp encode
+                sendPayload += fileName.encode("utf-8")+  b"\0x09" + str(fileSize).encode("utf-8") + b"\0x0A"
 
+            #encodes message with etp encode
+            message = etp.encode(etp.LIST_OK, sendPayload, 0)
+             transport_tcp.send_all(conn, message)
+
+
+
+        elif(state == GET):
+            #perform get logic
+            pass
+        elif(state == PUT):
+            #perform put logic'
+            pass
+        elif(state == BYE):
+            #perfomr bye logic
+            pass
+        else:
+            #must either be another hello message or a bad message, raise an error
 
     
     
