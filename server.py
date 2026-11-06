@@ -59,6 +59,7 @@ def handle_session(conn, peer, root):
     while(state != BYE)
         message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
         state = message_tuple[1]
+
         if(state == LIST)
             byteSize:int = len(message_tuple[4])
             #if bad request, raise bad request and send the error back
@@ -81,13 +82,56 @@ def handle_session(conn, peer, root):
 
             #encodes message with etp encode
             message = etp.encode(etp.LIST_OK, sendPayload, 0)
-             transport_tcp.send_all(conn, message)
-
-
+            transport_tcp.send_all(conn, message)
 
         elif(state == GET):
+            #sets up the iteratotr to check
+            dirIterator = os.scandir(root)
+            sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
+            checkedFile = message_tuple[4]
+            sentFile = None
+            messageLen = message_tuple[3]
+            realFile:bool = False
+            try
+                #checks if name is valid
+                if(etp.valid_name(checkedFile) == False):
+                    raise etp.BAD_NAME
+
+                #loops through the iterator to ensure file exsists
+                for entry in sortedIterator:
+                    if(checkedFile.decode("utf-8") == entry.name)
+                       realFile = True
+                       sentFile = entry
+                       
+                #setting errors accordingly
+                if(realFile != True):
+                    raise etp.NOT_FOUND
+                
+                if(sentFile.stat().st_size > etp.MAX_LEN):
+                    raise etp.SERVER_ERROR
+                
+                #preparing the payload
+                with open(sentFile.path, "rb") as f:
+                    sendPayload = f.read()
+
+                #encoding and sending the message
+                message = etp.encode(etp.GET_OK, sendPayload, 0)
+                transport_tcp.send_all(conn, message)
+
+
+
+            except etp.BAD_NAME:
+                message = etp.encode(etp.BAD_NAME, '', 1)
+                transport_tcp.send_all(conn, message)
+            except etp.NOT_FOUND:
+                message = etp.encode(etp.NOT_FOUND, '', 1)
+                transport_tcp.send_all(conn, message)
+            except etp.SERVER_ERROR:
+                message = etp.encode(etp.SERVER_ERROR, '', 1)
+                transport_tcp.send_all(conn, message)
+                    
+
             #perform get logic
-            pass
         elif(state == PUT):
             #perform put logic'
             pass
