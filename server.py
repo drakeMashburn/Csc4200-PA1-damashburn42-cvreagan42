@@ -16,6 +16,7 @@ import argparse
 import os
 import sys
 import threading
+import hashlib
 
 import etp
 import transport_tcp                     # the seam: see src/transport.py
@@ -34,7 +35,7 @@ def handle_session(conn, peer, root):
     state = AWAIT_HELLO
     #while the state is in await hello, it will check if the recived message is hello, if not crash, otherwise, check if it is a valid hello, if it is not a valid hello, set state back to await hello, otherwise, make state HELLO_OK and send it, braking the loop
    
-    while(state == AWAIT_HELLO)
+    while(state == AWAIT_HELLO):
         #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
         message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
         #raise not ready fatal
@@ -45,7 +46,7 @@ def handle_session(conn, peer, root):
             
         #if the Name is bad, it will raise a non fatal bad name error, set the state back to AWAIT_HELLO, and start back at the begining of the loop.) Else, send back HELLO_OK
         try:
-            if(state != 0x1,0x2,0x3,0x4,0x5) #or if length is less then 1 byte or more then 32) :
+            if(state !=(0x1,0x2,0x3,0x4,0x5)): #or if length is less then 1 byte or more then 32) :
                 raise etp.BAD_NAME
             else:
                 state = HELLO_OK
@@ -56,15 +57,160 @@ def handle_session(conn, peer, root):
             state = AWAIT_HELLO
             continue 
 
-    while(state != BYE)
+    while(state != BYE):
         message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
         state = message_tuple[1]
-        if(state = list)
 
+        if(state == LIST):
+            byteSize:int = len(message_tuple[4])
+            #if bad request, raise bad request and send the error back
+            try:
+                if(byteSize != 0):
+                    raise etp.BAD_REQUEST
+            except etp.BAD_REQUEST:
+                message = etp.encode(etp.BAD_REQUEST, '', 1)
+                transport_tcp.send_all(conn, message)
+                continue
+            #gets all files in root and sorts them in reverse order (z files should come up first)
+            dirIterator = os.scandir(root)
+            sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
+            sendPayload = b""
+            for entry in sortedIterator:
+                fileName = entry.name
+                fileSize = entry.stat.st_size
+                #the .encode is a built in python func, not the etp encode
+                sendPayload += fileName.encode("utf-8")+  b"\x09" + str(fileSize).encode("utf-8") + b"\x0A"
+
+            #encodes message with etp encode
+            message = etp.encode(etp.LIST_OK, sendPayload, 0)
+            transport_tcp.send_all(conn, message)
+
+        elif(state == GET):
+            #sets up the iteratotr to check
+            dirIterator = os.scandir(root)
+            sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
+            checkedFile = message_tuple[4]
+            sentFile = None
+            messageLen = message_tuple[3]
+            realFile:bool = False
+            try:
+                #checks if name is valid
+                if(etp.valid_name(checkedFile) == False):
+                    raise etp.BAD_NAME
+
+                #loops through the iterator to ensure file exsists
+                for entry in sortedIterator:
+                    if(checkedFile.decode("utf-8") == entry.name):
+                       realFile = True
+                       sentFile = entry
+                       
+                #setting errors accordingly
+                if(realFile != True):
+                    raise etp.NOT_FOUND
+                
+                if(sentFile.stat().st_size > etp.MAX_LEN):
+                    raise etp.SERVER_ERROR
+                
+                #preparing the payload
+                with open(sentFile.path, "rb") as f:
+                    sendPayload = f.read()
+
+                #encoding and sending the message
+                message = etp.encode(etp.GET_OK, sendPayload, 0)
+                transport_tcp.send_all(conn, message)
+
+
+
+            except etp.BAD_NAME:
+                message = etp.encode(etp.BAD_NAME, '', 1)
+                transport_tcp.send_all(conn, message)
+            except etp.NOT_FOUND:
+                message = etp.encode(etp.NOT_FOUND, '', 1)
+                transport_tcp.send_all(conn, message)
+            except etp.SERVER_ERROR:
+                message = etp.encode(etp.SERVER_ERROR, '', 1)
+                transport_tcp.send_all(conn, message)
+
+
+            #perform get logic
+        elif(state == PUT):
+            messageLen = message_tuple[3]
+            payload = message_tuple[4]
+            nameLen = int.from_bytes(payload[:2], byteorder = "big") #nameLen is the first 2 bytes of the payload
+            name = payload[2:2 + nameLen]
+            data = payload[2+ nameLen:]
+            try:
+                #checks the size constraight
+                if((messageLen < 2) or (nameLen > messageLen - 2)):
+                    raise etp.BAD_REQUEST
+                #checks if name is valid
+                if(etp.valid_name(name) == False):
+                    raise etp.BAD_NAME
+
+                #creates and writes to a temp file
+                tempPath = os.path.join(root, ".tempFile.txt")
+
+                with open(tempPath, "wb") as f:
+                    f.write(data)
+
+                #sets an
+                dirIterator = os.scandir(root)
+                sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
+
+                for entry in sortedIterator:
+                        if(name.decode("utf-8") == entry.name):
+                            if(entry.is_file() != True):
+                                raise etp.SERVER_ERROR
+
+                finalFilePath = os.path.join(root, name.decode("utf-8"))
+
+                os.replace(tempPath, finalFilePath)
+
+
+                data = hashlib.sha256(data).digest()
+
+                message = etp.encode(etp.PUT_OK, data, 0)
+                transport_tcp.send_all(conn, message)
+
+            except etp.BAD_REQUEST:
+                message = etp.encode(etp.BAD_REQUEST, '', 1)
+                transport_tcp.send_all(conn, message)
+            except etp.BAD_NAME:
+                message = etp.encode(etp.BAD_NAME, '', 1)
+                transport_tcp.send_all(conn, message)
+            except etp.SERVER_ERROR:
+                if os.path.exists(tempPath):
+                    os.remove(tempPath)
+                message = etp.encode(etp.SERVER_ERROR, '', 1)
+                transport_tcp.send_all(conn, message)
+            except OSError:
+                message = etp.encode(etp.SERVER_ERROR, '', 1)
+                transport_tcp.send_all(conn, message)
+
+        elif(state == BYE):
+           byteSize = len(message_tuple[4])
+            #if bad request, raise bad request and send the error back
+            try:
+                if(byteSize != 0):
+                    raise etp.BAD_REQUEST
+                message = etp.encode(etp.BYE_OK, '', 0)
+                transport_tcp.send_all(conn, message)
+                transport_tcp.close(conn)
+            except etp.BAD_REQUEST:
+                message = etp.encode(etp.BAD_REQUEST, '', 1)
+                transport_tcp.send_all(conn, message)
+
+        #if it is not any of the above, it must be another hello or a bad request
+        else:
+           try:
+                raise etp.BAD_REQUEST
+            except etp.BAD_REQUEST:
+                message = etp.encode(etp.BAD_REQUEST, '', 1)
+                transport_tcp.send_all(conn, message)
+        
     #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
 
-    # raise NotImplementedError
-
+    #raise NotImplementedError
 
 def main():
     ap = argparse.ArgumentParser(description="ETP/1 server")
