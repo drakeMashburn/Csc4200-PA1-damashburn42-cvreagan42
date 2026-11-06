@@ -32,10 +32,10 @@ def handle_session(conn, peer, root):
     """
 
     #sets the current state to AWAIT_HELLO to check things, (like if first message is hello.)
-    state = AWAIT_HELLO
+    state = etp.AWAIT_HELLO
     #while the state is in await hello, it will check if the recived message is hello, if not crash, otherwise, check if it is a valid hello, if it is not a valid hello, set state back to await hello, otherwise, make state HELLO_OK and send it, braking the loop
    
-    while(state == AWAIT_HELLO):
+    while(state == etp.AWAIT_HELLO):
         #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
         message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
         #raise not ready fatal
@@ -49,19 +49,19 @@ def handle_session(conn, peer, root):
             if(state !=(0x1,0x2,0x3,0x4,0x5)): #or if length is less then 1 byte or more then 32) :
                 raise etp.BAD_NAME
             else:
-                state = HELLO_OK
+                state = etp.HELLO_OK
                 sendPayload:bytes = b"theEtpServer"
                 message = etp.encode(etp.HELLO_OK, sendPayload, 0)
                 transport_tcp.send_all(conn, message)
         except etp.BAD_NAME:
-            state = AWAIT_HELLO
+            state = etp.AWAIT_HELLO
             continue 
 
-    while(state != BYE):
+    while(state != etp.BYE):
         message_tuple = etp.read_message(conn, transport_tcp) #the touple has( version, mtype, status, length, payload)
         state = message_tuple[1]
 
-        if(state == LIST):
+        if(state == etp.LIST):
             byteSize:int = len(message_tuple[4])
             #if bad request, raise bad request and send the error back
             try:
@@ -85,7 +85,7 @@ def handle_session(conn, peer, root):
             message = etp.encode(etp.LIST_OK, sendPayload, 0)
             transport_tcp.send_all(conn, message)
 
-        elif(state == GET):
+        elif(state == etp.GET):
             #sets up the iteratotr to check
             dirIterator = os.scandir(root)
             sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
@@ -133,7 +133,7 @@ def handle_session(conn, peer, root):
 
 
             #perform get logic
-        elif(state == PUT):
+        elif(state == etp.PUT):
             messageLen = message_tuple[3]
             payload = message_tuple[4]
             nameLen = int.from_bytes(payload[:2], byteorder = "big") #nameLen is the first 2 bytes of the payload
@@ -187,8 +187,8 @@ def handle_session(conn, peer, root):
                 message = etp.encode(etp.SERVER_ERROR, '', 1)
                 transport_tcp.send_all(conn, message)
 
-        elif(state == BYE):
-           byteSize = len(message_tuple[4])
+        elif(state == etp.BYE):
+            byteSize = len(message_tuple[4])
             #if bad request, raise bad request and send the error back
             try:
                 if(byteSize != 0):
@@ -204,7 +204,7 @@ def handle_session(conn, peer, root):
         else:
            try:
                 raise etp.BAD_REQUEST
-            except etp.BAD_REQUEST:
+           except etp.BAD_REQUEST:
                 message = etp.encode(etp.BAD_REQUEST, '', 1)
                 transport_tcp.send_all(conn, message)
         
