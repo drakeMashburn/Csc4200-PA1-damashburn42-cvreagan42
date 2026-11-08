@@ -38,11 +38,15 @@ def run(args):
     try:
         exit_status = EXIT_OK
         
+        print("RUN STARTED")
         conn = transport.connect(args.host, args.port)
-        msg = encode(HELLO, args.name.encode())
+        print("CONNECTED")
+        msg = etp.encode(HELLO, args.name.encode())
 
         transport.send_all(conn, msg)
-        version, mtype, status, length, payload = read_message(conn, transport)
+        print("SENT HELLO")
+        version, mtype, status, length, payload = etp.read_message(conn, transport)
+        print("RECEIVED", hex(mtype))
 
         if mtype == ERROR:
             print(f"{status}: {payload.decode()}",file=sys.stderr)
@@ -52,10 +56,10 @@ def run(args):
             return EXIT_FAILURE
 
         if args.command == "list":
-            msg = encode(LIST)
+            msg = etp.encode(LIST)
             transport.send_all(conn, msg)
 
-            version, mtype, status, length, payload = read_message(conn, transport)
+            version, mtype, status, length, payload = etp.read_message(conn, transport)
 
             if mtype == ERROR:
                 print(f"{status}: {payload.decode()}",file=sys.stderr)
@@ -67,10 +71,10 @@ def run(args):
             sys.stdout.buffer.write(payload)
         
         elif args.command == "get":
-            msg = encode(GET, args.remote.encode())
+            msg = etp.encode(GET, args.remote.encode())
             transport.send_all(conn, msg)
 
-            version, mtype, status, length, payload = read_message(conn, transport)
+            version, mtype, status, length, payload = etp.read_message(conn, transport)
 
             if mtype == ERROR:
                 print(f"{status}: {payload.decode()}", file=sys.stderr)
@@ -89,10 +93,10 @@ def run(args):
             remote = args.remote.encode()
             payload = (len(remote).to_bytes(2, "big") + remote + data)
 
-            msg = encode(PUT, payload)
+            msg = etp.encode(PUT, payload)
             transport.send_all(conn, msg)
 
-            version, mtype, status, length, payload = read_message(conn, transport)
+            version, mtype, status, length, payload = etp.read_message(conn, transport)
 
             if mtype == ERROR:
                 print(f"{status}: {payload.decode()}", file=sys.stderr)
@@ -111,21 +115,22 @@ def run(args):
             else:
                 print(payload.hex())
         
-        msg = encode(BYE)
+        msg = etp.encode(BYE)
         transport.send_all(conn, msg)
         
-        version, mtype, status, length, payload = read_response(conn, BYE_OK)
+        version, mtype, status, length, payload = etp.read_message(conn, transport)
 
-        if mtype != HELLO_OK:
+        if mtype != BYE_OK:
             return EXIT_FAILURE
         
         transport.close(conn)
         return EXIT_OK
 
-    except Exception:
+    except Exception as e:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return EXIT_FAILURE
     # raise NotImplementedError
-
 
 def main():
     ap = argparse.ArgumentParser(description="ETP/1 client")

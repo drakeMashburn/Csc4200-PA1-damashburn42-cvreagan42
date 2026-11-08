@@ -119,8 +119,6 @@ def handle_session(conn, peer, root):
                 message = etp.encode(etp.GET_OK, sendPayload, 0)
                 transport_tcp.send_all(conn, message)
 
-
-
             except etp.BAD_NAME:
                 message = etp.encode(etp.BAD_NAME, '', 1)
                 transport_tcp.send_all(conn, message)

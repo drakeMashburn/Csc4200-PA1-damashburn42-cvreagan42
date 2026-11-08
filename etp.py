@@ -63,9 +63,6 @@ def read_message(conn, transport):
     payload = transport.recv_exact(conn, length)
     if payload is None:
         return None
-    
-    if mtype not in (HELLO, LIST, GET, PUT, BYE):
-        raise BAD_TYPE
 
     return (version, mtype, status, length, payload)
     # raise NotImplementedError
