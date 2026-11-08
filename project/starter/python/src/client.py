@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """ETP/1 client -- CSC 4200/5200 PA1 starter (Python).
 
-    ./etp-client --host HOST --port PORT --name NAME list
-    ./etp-client --host HOST --port PORT --name NAME get REMOTE LOCAL
-    ./etp-client --host HOST --port PORT --name NAME put LOCAL REMOTE
+    ./etp-client --host 127.0.0.1 --port 5000 --name Connor list
+    ./etp-client --host 127.0.0.1 --port 5000 --name Connor get remote_test.txt test.txt
+    ./etp-client --host 127.0.0.1 --port 5000 --name Connor put test.txt remote_test.txt
 
 The argument handling is done for you. Everything marked TODO is yours.
 This file must not import socket: use the transport module (the seam).
@@ -17,6 +17,7 @@ PA1 brief.
 import argparse
 import sys
 import traceback
+import hashlib
 
 import etp
 import transport                     # the seam: see src/transport.py
@@ -33,7 +34,101 @@ def run(args):
     `list` prints the LIST_OK payload exactly, `put` prints the 64-hex-digit
     digest, and every diagnostic goes to standard error.
     """
-    raise NotImplementedError
+
+    try:
+        exit_status = EXIT_OK
+        
+        conn = transport.connect(args.host, args.port)
+        msg = etp.encode(etp.HELLO, args.name.encode())
+
+        transport.send_all(conn, msg)
+        version, mtype, status, length, payload = etp.read_message(conn, transport)
+
+        if mtype == etp.ERROR:
+            print(f"{status}: {payload.decode()}",file=sys.stderr)
+            return EXIT_SERVER_ERROR
+        
+        if mtype != etp.HELLO_OK:
+            return EXIT_FAILURE
+
+        if args.command == "list":
+            msg = etp.encode(etp.LIST)
+            transport.send_all(conn, msg)
+
+            version, mtype, status, length, payload = etp.read_message(conn, transport)
+
+            if mtype == etp.ERROR:
+                print(f"{status}: {payload.decode()}",file=sys.stderr)
+                return EXIT_SERVER_ERROR
+
+            if mtype != etp.LIST_OK:
+                return EXIT_FAILURE
+
+            sys.stdout.buffer.write(payload)
+        
+        elif args.command == "get":
+            msg = etp.encode(etp.GET, args.remote.encode())
+            transport.send_all(conn, msg)
+
+            version, mtype, status, length, payload = etp.read_message(conn, transport)
+
+            if mtype == etp.ERROR:
+                print(f"{status}: {payload.decode()}", file=sys.stderr)
+                return EXIT_SERVER_ERROR
+            
+            if mtype != etp.GET_OK:
+                return EXIT_FAILURE
+            
+            with open(args.local, "wb") as f:
+                f.write(payload)
+        
+        elif args.command == "put":
+            with open(args.local, "rb") as f:
+                data = f.read()
+            
+            exit_status = EXIT_OK
+            
+            remote = args.remote.encode()
+            payload = (len(remote).to_bytes(2, "big") + remote + data)
+
+            msg = etp.encode(etp.PUT, payload)
+            transport.send_all(conn, msg)
+
+            version, mtype, status, length, payload = etp.read_message(conn, transport)
+
+            if mtype == etp.ERROR:
+                print(f"{status}: {payload.decode()}", file=sys.stderr)
+                return EXIT_SERVER_ERROR
+
+            if mtype != etp.PUT_OK:
+                return EXIT_FAILURE
+            
+            if length != 32:
+                return EXIT_FAILURE
+            
+            local_digest = hashlib.sha256(data).digest()
+
+            if local_digest != payload:
+                exit_status = EXIT_DIGEST
+            else:
+                print(payload.hex())
+        
+        msg = etp.encode(etp.BYE)
+        transport.send_all(conn, msg)
+        
+        version, mtype, status, length, payload = etp.read_message(conn, transport)
+
+        if mtype != etp.BYE_OK:
+            return EXIT_FAILURE
+        
+        transport.close(conn)
+        return exit_status
+
+    except Exception:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        return EXIT_FAILURE
+    # raise NotImplementedError
 
 
 def main():

@@ -33,24 +33,12 @@ NAME_RE = re.compile(rb"^[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}\Z")
 
 def encode(mtype, payload=b"", status=0):
     """Return the bytes of one complete ETP message: header + payload."""
-    byteSize:int = 0
     # TODO: pack the header with HEADER.pack(...) and append the payload.
     #first 8 bytes are the header, rest is payload, 
-    if(mtype == HELLO):
-        byteSize = 15
-    elif(mtype == HELLO_OK):
-        byteSize = 32
-    elif(mtype == LIST):
-        byteSize = 8
-    elif(mtype == LIST_OK):
-        byteSize = 32
-    elif(mtype == BYE):
-        byteSize = 8
-    elif(mtype == BYE_OK):
-        byteSize = 8
+    length = len(payload)
 
-    HEADER.pack(VERSION, mtype, status, 0, byteSize)
-    return (HEADER + payload)
+    header = HEADER.pack(VERSION, mtype, status, 0, length)
+    return (header + payload)
  
     #raise NotImplementedError
 
@@ -63,8 +51,24 @@ def read_message(conn, transport):
     the payload, and why?
     """
     # TODO
-    raise NotImplementedError
 
+    header = transport.recv_exact(conn, HEADER_SIZE)
+    if header is None:
+        return None
+
+    (version, mtype, status, reserved, length) = HEADER.unpack(header)
+    if version != 1:
+        raise ValueError("BAD_VERSION")
+
+    if length > MAX_LEN:
+        raise ValueError("TOO_LARGE")
+    
+    payload = transport.recv_exact(conn, length)
+    if payload is None:
+        return None
+
+    return (version, mtype, status, length, payload)
+    # raise NotImplementedError
 
 def valid_name(name_bytes):
     """True if `name_bytes` is a valid ETP file name (Specification, Section 7)."""

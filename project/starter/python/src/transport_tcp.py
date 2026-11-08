@@ -16,6 +16,8 @@ write the bodies of the functions in this file. See "Note to AI Assistants" in
 the PA1 brief.
 """
 
+import socket
+
 
 class ConnectionClosed(Exception):
     """The peer closed the stream.
@@ -33,31 +35,89 @@ class ConnectionClosed(Exception):
 def listen(bind_addr, port):
     """Start accepting sessions on bind_addr:port; return a listener.
     Remember SO_REUSEADDR (Specification, Section 9)."""
-    raise NotImplementedError
+    #accept the connection
+    #the listener is a socket.
+    #essentally, create the listen with our args
+    ##set the SO_REUSEADDR then binf the listener, then return it.
+
+    #creates the listener socket
+    listener:socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    #sets the SO_REUSEADDR flag
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #binds the socket based off address and port
+    listener.bind((bind_addr,port))
+
+    listener.listen()
+
+    #returns the socket
+    return listener
+    #raise NotImplementedError
 
 
-def accept(listener):
+def accept(listener:socket):
     """Wait for the next session; return (conn, peer_address)."""
-    raise NotImplementedError
+    #func will recive the listenr socket, and we need to get the conn, and peer address out of it
+    #so the accept func itself will return those values, and we can take it from that.
+
+    #listener returns the conn and addr as a touple
+    acceptTuple = listener.accept()
+    #returns each individual element of the tuple
+    return acceptTuple[0], acceptTuple[1]
+    #raise NotImplementedError
 
 
 def connect(host, port):
     """Open a session to host:port; return conn."""
-    raise NotImplementedError
-
+    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn.connect((host, port))
+    return conn
+    # raise NotImplementedError
 
 def send_all(conn, data):
     """Send every byte of `data`, or raise an exception."""
-    raise NotImplementedError
+    total_sent = 0
+
+    while total_sent < len(data):
+        sent = conn.send(data[total_sent:])
+
+        if sent == 0:
+            raise ConnectionClosed("Socket closed")
+        
+        total_sent += sent
+    # raise NotImplementedError
 
 
 def recv_exact(conn, n):
     """Return exactly n bytes. Raise ConnectionClosed(clean=...) if the stream ends."""
-    raise NotImplementedError
 
+    buffer = bytearray()
+    while len(buffer) < n:
+        chunk = conn.recv(n - len(buffer))
+        if chunk == b"":
+            if not buffer:
+                raise ConnectionClosed(True)
+        buffer.extend(chunk)
+    return bytes(buffer)
+    
+    # raise NotImplementedError
 
 def close(conn):
     """Close the session gracefully: shut down your sending side, read and
     discard whatever is still arriving until end-of-stream (or about a second
     passes), then close. Specification, Section 8.2 explains why."""
-    raise NotImplementedError
+
+    conn.shutdown(socket.SHUT_WR)
+    conn.settimeout(1.0)
+
+    try:
+        while True:
+            data = conn.recv(4096)
+
+            if data == b"":
+                break
+    except socket.timeout as error:
+        print(f"Problem with closing session: {error}")
+    
+    conn.close()
+
+    # raise NotImplementedError

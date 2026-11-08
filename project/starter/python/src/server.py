@@ -15,9 +15,11 @@ See "Note to AI Assistants" in the PA1 brief.
 import argparse
 import os
 import sys
+import threading
+import hashlib
 
 import etp
-import transport                     # the seam: see src/transport.py
+import transport_tcp                     # the seam: see src/transport.py
 
 
 def handle_session(conn, peer, root):
@@ -28,8 +30,215 @@ def handle_session(conn, peer, root):
     per response (Section 9), and close when the session ends -- for any reason.
     A failure here must end THIS session only, never the server.
     """
-    raise NotImplementedError
 
+    #sets the current state to AWAIT_HELLO to check things, (like if first message is hello.)
+    #while the state is in await hello, it will check if the recived message is hello, if not crash, otherwise, check if it is a valid hello, if it is not a valid hello, set state back to await hello, otherwise, make state HELLO_OK and send it, braking the loop
+   
+    #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
+    #the touple has( version, mtype, status, length, payload)
+    try:
+        message_tuple = etp.read_message(conn, transport_tcp)
+    except ValueError as e:
+        if str(e) == "BAD_VERSION":
+            message = etp.encode(etp.ERROR, b"", etp.BAD_VERSION)
+            transport_tcp.send_all(conn, message)
+            transport_tcp.close(conn)
+            return
+        elif str(e) == "TOO_LARGE":
+            message = etp.encode(etp.ERROR, b"", etp.TOO_LARGE)
+            transport_tcp.send_all(conn, message)
+            transport_tcp.close(conn)
+            return
+        elif str(e) == "BAD_TYPE":
+            message = etp.encode(etp.ERROR, b"", etp.BAD_TYPE)
+            transport_tcp.send_all(conn, message)
+            return
+    
+    #raise not ready fatal
+
+    state = message_tuple[1]
+    payload = message_tuple[4]
+    if(state != etp.HELLO):
+        message = etp.encode(etp.ERROR, b"", etp.NOT_READY)
+        transport_tcp.send_all(conn, message)
+        transport_tcp.close(conn)
+        return
+            
+        #if the Name is bad, it will raise a non fatal bad name error, set the state back to AWAIT_HELLO, and start back at the begining of the loop.) Else, send back HELLO_OK
+    if(len(payload) < 1 or len(payload) > 32): #or if length is less then 1 byte or more then 32) :
+        error_msg = etp.encode(etp.ERROR, b"", etp.BAD_NAME)
+        transport_tcp.send_all(conn, error_msg)
+        return
+    else:
+        sendPayload = b"theEtpServer"
+        message = etp.encode(etp.HELLO_OK, sendPayload, 0)
+        transport_tcp.send_all(conn, message)
+
+    while(state != etp.BYE):
+        # the touple has( version, mtype, status, length, payload)
+        try:
+            message_tuple = etp.read_message(conn, transport_tcp)
+        except ValueError as e:
+            if str(e) == "BAD_VERSION":
+                message = etp.encode(etp.ERROR, b"", etp.BAD_VERSION)
+                transport_tcp.send_all(conn, message)
+                transport_tcp.close(conn)
+                return
+            elif str(e) == "TOO_LARGE":
+                message = etp.encode(etp.ERROR, b"", etp.TOO_LARGE)
+                transport_tcp.send_all(conn, message)
+                transport_tcp.close(conn)
+                return
+            elif str(e) == "BAD_TYPE":
+                message = etp.encode(etp.ERROR, b"", etp.BAD_TYPE)
+                transport_tcp.send_all(conn, message)
+                continue
+
+        state = message_tuple[1]
+        if state not in (etp.HELLO, etp.LIST, etp.GET, etp.PUT, etp.BYE):
+            message = etp.encode(etp.ERROR, b"", etp.BAD_TYPE)
+            transport_tcp.send_all(conn, message)
+            continue
+
+        if(state == etp.LIST):
+            byteSize:int = len(message_tuple[4])
+            #if bad request, raise bad request and send the error back
+            if(byteSize != 0):
+                message = etp.encode(etp.ERROR, b"", etp.BAD_REQUEST)
+                transport_tcp.send_all(conn, message)
+                continue
+            #gets all files in root and sorts them in reverse order (z files should come up first)
+            dirIterator = os.scandir(root)
+            sortedIterator = sorted(dirIterator, key=lambda entry: entry.name)
+            sendPayload = b""
+            for entry in sortedIterator:
+                if not entry.is_file():
+                    continue
+                
+                if not etp.valid_name(entry.name.encode("utf-8")):
+                    continue
+
+                fileName = entry.name
+                fileSize = entry.stat().st_size
+                #the .encode is a built in python func, not the etp encode
+                sendPayload += fileName.encode("utf-8") +  b"\t" + str(fileSize).encode("utf-8") + b"\n"
+
+            #encodes message with etp encode
+            message = etp.encode(etp.LIST_OK, sendPayload, 0)
+            transport_tcp.send_all(conn, message)
+
+        elif(state == etp.GET):
+            #sets up the iteratotr to check
+            dirIterator = os.scandir(root)
+            sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
+            checkedFile = message_tuple[4]
+            sentFile = None
+            messageLen = message_tuple[3]
+            realFile:bool = False
+
+            #checks if name is valid
+            if(etp.valid_name(checkedFile) == False):
+                message = etp.encode(etp.ERROR, b"", etp.BAD_NAME)
+                transport_tcp.send_all(conn, message)
+                continue
+
+            #loops through the iterator to ensure file exsists
+            for entry in sortedIterator:
+                if(checkedFile.decode("utf-8") == entry.name):
+                    realFile = True
+                    sentFile = entry
+                       
+            #setting errors accordingly
+            if not realFile:
+                message = etp.encode(etp.ERROR, b"", etp.NOT_FOUND)
+                transport_tcp.send_all(conn, message)
+                continue
+                
+            if(sentFile.stat().st_size > etp.MAX_LEN):
+                message = etp.encode(etp.ERROR, b"", etp.SERVER_ERROR)
+                transport_tcp.send_all(conn, message)
+                continue
+                
+            #preparing the payload
+            with open(sentFile.path, "rb") as f:
+                sendPayload = f.read()
+
+            #encoding and sending the message
+            message = etp.encode(etp.GET_OK, sendPayload, 0)
+            transport_tcp.send_all(conn, message)
+
+            #perform get logic
+        elif(state == etp.PUT):
+            messageLen = message_tuple[3]
+            payload = message_tuple[4]
+            nameLen = int.from_bytes(payload[:2], byteorder = "big") #nameLen is the first 2 bytes of the payload
+            name = payload[2:2 + nameLen]
+            data = payload[2+ nameLen:]
+
+            if((messageLen < 2) or (nameLen > messageLen - 2)):
+                message = etp.encode(etp.ERROR, b"", etp.BAD_REQUEST)
+                transport_tcp.send_all(conn, message)
+                continue
+            #checks if name is valid
+            if(etp.valid_name(name) == False):
+                message = etp.encode(etp.ERROR, b"", etp.BAD_NAME)
+                transport_tcp.send_all(conn, message)
+                continue
+
+            try:
+                #creates and writes to a temp file
+                tempPath = os.path.join(root, ".tempFile.txt")
+
+                with open(tempPath, "wb") as f:
+                    f.write(data)
+
+                #sets an
+                dirIterator = os.scandir(root)
+                sortedIterator = sorted(dirIterator, key=lambda entry: entry.name, reverse = True)
+
+                for entry in sortedIterator:
+                        if(name.decode("utf-8") == entry.name):
+                            if(entry.is_file() != True):
+                                message = etp.encode(etp.ERROR, b"", etp.BAD_REQUEST)
+                                transport_tcp.send_all(conn, message)
+                                continue
+
+                finalFilePath = os.path.join(root, name.decode("utf-8"))
+
+                os.replace(tempPath, finalFilePath)
+
+                data = hashlib.sha256(data).digest()
+
+                message = etp.encode(etp.PUT_OK, data, 0)
+                transport_tcp.send_all(conn, message)
+
+            except OSError:
+                if os.path.exists(tempPath):
+                    os.remove(tempPath)
+                message = etp.encode(etp.ERROR, b"", etp.SERVER_ERROR)
+                transport_tcp.send_all(conn, message)
+                continue
+
+        elif(state == etp.BYE):
+            byteSize = len(message_tuple[4])
+            #if bad request, raise bad request and send the error back
+            if(byteSize != 0):
+                message = etp.encode(etp.ERROR, b"", etp.BAD_REQUEST)
+                transport_tcp.send_all(conn, message)
+                continue
+            else:
+                message = etp.encode(etp.BYE_OK, b"", 0)
+                transport_tcp.send_all(conn, message)
+                transport_tcp.close(conn)
+
+        #if it is not any of the above, it must be another hello or a bad request
+        else:
+            message = etp.encode(etp.ERROR, b"", etp.BAD_REQUEST)
+            transport_tcp.send_all(conn, message)
+            
+    #checks are done in the etp.py read message function itself so we can assume that what read_message returns is valid
+
+    #raise NotImplementedError
 
 def main():
     ap = argparse.ArgumentParser(description="ETP/1 server")
@@ -44,7 +253,18 @@ def main():
     # TODO: listen through the transport, then accept sessions forever,
     # serving each one so that a stalled client cannot delay the others
     # (Specification, Section 9: Concurrency).
-    raise NotImplementedError
+
+    listener = transport_tcp.listen(args.bind, args.port)
+
+    while(True):
+        conn, peer_address = transport_tcp.accept(listener)
+
+        threading.Thread(
+            target=handle_session,
+            args=(conn, peer_address, args.root),
+            daemon=True
+        ).start()
+    # raise NotImplementedError
 
 
 if __name__ == "__main__":
