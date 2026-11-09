@@ -11,6 +11,25 @@ _Paste the exact commands you ran (capture, server, client, ss), and the size of
 the file you transferred._
 
 ```
+# scratch/ is never committed 
+mkdir -p server-files evidence scratch 
+
+# 256 KiB of synthetic data
+head -c 262144 /dev/urandom > scratch/photo.bin
+
+# Terminal 1: Server 
+./etp-server --port 5000 --root server-files 
+
+# Terminal 2: Capture
+tshark -i lo -s 200 -f "tcp port 5000" -w evidence/pa1-capture.pcap 
+
+# Terminal 3: Client
+C="./etp-client --host 127.0.0.1 --port 5000 --name Connor" 
+$C put scratch/photo.bin photo.bin 
+$C get photo.bin scratch/copy.bin 
+cmp scratch/photo.bin scratch/copy.bin && echo identical 
+ss -tan state time-wait '( sport = :5000 or dport = :5000 )' \ 
+> evidence/time-wait.txt
 ```
 
 ## Facts
@@ -40,19 +59,19 @@ three handshake segments of the GET session. Explain why the acknowledgment numb
 in the third segment is what it is. What MSS did the client advertise, and what on
 your machine determines that value?_
 
-- SYN
+SYN
 * Frame Number: 29
 * Flags: SYN 0x002
 * Sequence Number: 1028447834
 * Acknowledgement Number: 0
 
-- SYN-ACK
+SYN-ACK
 * Frame Number: 30
 * Flags: SYN, ACK 0x012
 * Sequence Number: 3366125845
 * Acknowledgement Number: 1028447835
 
-- ACK
+ACK
 * Frame Number: 31
 * Flags: ACK 0x010
 * Sequence Number: 1028447835
@@ -71,12 +90,12 @@ GET_OK. Does GET_OK's LENGTH equal the size of your file? Show the arithmetic th
 connects `server_to_client_payload_bytes` to the three responses the server sent in
 this session._
 
-- GET
+GET
 * Frame Number: 36
 * Payload Bytes (Hex): 01 03 00 00 00 00 00 09
 * Decoded Fields: VERSION: 1, TYPE: GET, STATUS: 0, RESERVED: 0, LENGTH: 9
 
-- GET_OK
+GET_OK
 * Frame Number: 37
 * Payload Bytes (Hex): 01 83 00 00 00 04 00 00
 * Decoded Fields: VERSION: 1, TYPE: GET_OK, STATUS: 0, RESERVED: 0, LENGTH: 262144
